@@ -156,14 +156,6 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
     velo_path = os.path.join(kitti.data_path, 'velodyne_points')
     velo_data_dir = os.path.join(velo_path, 'data')
     velo_filenames = sorted(os.listdir(velo_data_dir))
-    with open(os.path.join(velo_path, 'timestamps.txt')) as f:
-        lines = f.readlines()
-        velo_datetimes = []
-        for line in lines:
-            if len(line) == 1:
-                continue
-            dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
-            velo_datetimes.append(dt)
     with open(os.path.join(velo_path, 'timestamps_start.txt')) as f:
         lines = f.readlines()
         velo_start_time = []
@@ -177,11 +169,9 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
             dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
             velo_end_time.append(dt)
 
-    iterable = zip(velo_datetimes, velo_start_time, velo_end_time, velo_filenames)
+    iterable = zip(velo_start_time, velo_end_time, velo_filenames)
     bar = progressbar.ProgressBar()
-    for dt, dt0, dtN, filename in bar(iterable):
-        if dt is None:
-            continue
+    for dt0, dtN, filename in bar(iterable):
 
         velo_filename = os.path.join(velo_data_dir, filename)
 
@@ -190,10 +180,11 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
             scan = (np.fromfile(velo_filename, dtype=np.float32, sep=" ")).reshape(-1,4)
         else:
             scan = (np.fromfile(velo_filename, dtype=np.float32)).reshape(-1,4)
-        
+
+        # set pointcloud stamps relative to dt0 (as done by the velodyne ROS driver)
         dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
 
-        pc_stamps = (np.arange(float(datetime.strftime(dt0, "%s.%f")), float(datetime.strftime(dtN, "%s.%f")), dt_step)).reshape(-1,1)
+        pc_stamps = (np.arange(0.0, float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")), dt_step)).reshape(-1,1)
         if pc_stamps.shape[0] > scan.shape[0]:
             pc_stamps = pc_stamps[:-1]
 
@@ -202,9 +193,9 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
         # create header
         header = Header()
         header.frame_id = velo_frame_id
-        header.stamp = rospy.Time.from_sec(float(datetime.strftime(dt, "%s.%f")))
+        header.stamp = rospy.Time.from_sec(float(datetime.strftime(dt0, "%s.%f"))) # sweep reference stamp
 
-        # fill pcl msg
+        # fill pcl msg (with same fields as the velodyne ROS driver)
         fields = [PointField('x', 0, PointField.FLOAT32, 1),
                   PointField('y', 4, PointField.FLOAT32, 1),
                   PointField('z', 8, PointField.FLOAT32, 1),
