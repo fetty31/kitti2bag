@@ -193,7 +193,7 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
         
         dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
 
-        pc_stamps = (np.arange(float(datetime.strftime(dt0, "%s.%f")), float(datetime.strftime(dtN, "%s.%f")), dt_step)).reshape(-1,1)
+        pc_stamps = (np.arange(float(datetime.strftime(dt0, "%s.%f")) + dt_step, float(datetime.strftime(dtN, "%s.%f")), dt_step)).reshape(-1,1)
         if pc_stamps.shape[0] > scan.shape[0]:
             pc_stamps = pc_stamps[:-1]
 
@@ -208,8 +208,8 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
         fields = [PointField('x', 0, PointField.FLOAT32, 1),
                   PointField('y', 4, PointField.FLOAT32, 1),
                   PointField('z', 8, PointField.FLOAT32, 1),
-                  PointField('i', 12, PointField.FLOAT32, 1),
-                  PointField('time', 14, PointField.FLOAT32, 1)]
+                  PointField('intensity', 12, PointField.FLOAT32, 1),
+                  PointField('time', 16, PointField.FLOAT32, 1)]
         pcl_msg = pcl2.create_cloud(header, fields, scan_stamped)
 
         bag.write(topic + '/pointcloud', pcl_msg, t=pcl_msg.header.stamp)
