@@ -284,7 +284,7 @@ def save_gps_vel_data(bag, kitti, gps_frame_id, topic):
 def run_kitti2bag():
     parser = argparse.ArgumentParser(description = "Convert KITTI dataset to ROS bag file the easy way!")
     # Accepted argument values
-    kitti_types = ["raw", "raw_synced", "odom_color", "odom_gray"]
+    kitti_types = ["raw_unsynced", "raw_synced", "odom_color", "odom_gray"]
     odometry_sequences = []
     for s in range(22):
         odometry_sequences.append(str(s).zfill(2))
