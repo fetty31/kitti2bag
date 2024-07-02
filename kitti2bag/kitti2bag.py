@@ -44,7 +44,6 @@ def save_imu_data(bag, kitti, imu_frame_id, topic):
         imu.angular_velocity.z = oxts.packet.wu
         bag.write(topic, imu, t=imu.header.stamp)
 
-
 def save_dynamic_tf(bag, kitti, kitti_type, initial_time):
     print("Exporting time dependent transformations")
     if kitti_type.find("raw") != -1:
@@ -165,17 +164,40 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
                 continue
             dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
             velo_datetimes.append(dt)
+    with open(os.path.join(velo_path, 'timestamps_start.txt')) as f:
+        lines = f.readlines()
+        velo_start_time = []
+        for line in lines:
+            dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
+            velo_start_time.append(dt)
+    with open(os.path.join(velo_path, 'timestamps_end.txt')) as f:
+        lines = f.readlines()
+        velo_end_time = []
+        for line in lines:
+            dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
+            velo_end_time.append(dt)
 
-    iterable = zip(velo_datetimes, velo_filenames)
+    iterable = zip(velo_datetimes, velo_start_time, velo_end_time, velo_filenames)
     bar = progressbar.ProgressBar()
-    for dt, filename in bar(iterable):
+    for dt, dt0, dtN, filename in bar(iterable):
         if dt is None:
             continue
 
         velo_filename = os.path.join(velo_data_dir, filename)
 
-        # read binary data
-        scan = (np.fromfile(velo_filename, dtype=np.float32)).reshape(-1, 4)
+        # read binary/text data
+        if velo_filename[-3::] == "txt":
+            scan = (np.fromfile(velo_filename, dtype=np.float32, sep=" ")).reshape(-1,4)
+        else:
+            scan = (np.fromfile(velo_filename, dtype=np.float32)).reshape(-1,4)
+        
+        dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
+
+        pc_stamps = (np.arange(float(datetime.strftime(dt0, "%s.%f")), float(datetime.strftime(dtN, "%s.%f")), dt_step)).reshape(-1,1)
+        if pc_stamps.shape[0] > scan.shape[0]:
+            pc_stamps = pc_stamps[:-1]
+
+        scan_stamped = np.append(scan, pc_stamps, axis=1)
 
         # create header
         header = Header()
@@ -186,8 +208,9 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
         fields = [PointField('x', 0, PointField.FLOAT32, 1),
                   PointField('y', 4, PointField.FLOAT32, 1),
                   PointField('z', 8, PointField.FLOAT32, 1),
-                  PointField('i', 12, PointField.FLOAT32, 1)]
-        pcl_msg = pcl2.create_cloud(header, fields, scan)
+                  PointField('i', 12, PointField.FLOAT32, 1),
+                  PointField('time', 14, PointField.FLOAT32, 1)]
+        pcl_msg = pcl2.create_cloud(header, fields, scan_stamped)
 
         bag.write(topic + '/pointcloud', pcl_msg, t=pcl_msg.header.stamp)
 
@@ -261,7 +284,7 @@ def save_gps_vel_data(bag, kitti, gps_frame_id, topic):
 def run_kitti2bag():
     parser = argparse.ArgumentParser(description = "Convert KITTI dataset to ROS bag file the easy way!")
     # Accepted argument values
-    kitti_types = ["raw_synced", "odom_color", "odom_gray"]
+    kitti_types = ["raw", "raw_synced", "odom_color", "odom_gray"]
     odometry_sequences = []
     for s in range(22):
         odometry_sequences.append(str(s).zfill(2))
@@ -389,3 +412,5 @@ def run_kitti2bag():
             print(bag)
             bag.close()
 
+if __name__ == '__main__':
+    run_kitti2bag()
