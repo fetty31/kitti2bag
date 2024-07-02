@@ -193,7 +193,7 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
         
         dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
 
-        pc_stamps = (np.arange(float(datetime.strftime(dt0, "%s.%f")) + dt_step, float(datetime.strftime(dtN, "%s.%f")), dt_step)).reshape(-1,1)
+        pc_stamps = (np.arange(float(datetime.strftime(dt0, "%s.%f")), float(datetime.strftime(dtN, "%s.%f")), dt_step)).reshape(-1,1)
         if pc_stamps.shape[0] > scan.shape[0]:
             pc_stamps = pc_stamps[:-1]
 
