@@ -193,7 +193,7 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
         if pc_stamps.shape[0] > scan.shape[0]:
             pc_stamps = pc_stamps[:-1]
 
-        scan_stamped = np.append(scan, pc_stamps, axis=1)
+        scan_stamped = np.append(scan, pc_stamps, axis=1) # scan = [x, y, z, i, t]xN
 
         # create header
         header = Header()
