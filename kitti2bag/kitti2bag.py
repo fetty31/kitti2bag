@@ -1,4 +1,4 @@
-#!env python
+#!env python3
 # -*- coding: utf-8 -*-
 
 import sys
@@ -14,7 +14,7 @@ import os
 import cv2
 import rospy
 import rosbag
-import progressbar
+from progressbar import Bar, Percentage, Timer, ProgressBar
 from tf2_msgs.msg import TFMessage
 from datetime import datetime
 from std_msgs.msg import Header
@@ -131,7 +131,10 @@ def save_camera_data(bag, kitti_type, kitti, util, bridge, camera, camera_frame_
         calib.P = util['P{}'.format(camera_pad)]
     
     iterable = zip(image_datetimes, image_filenames)
-    bar = progressbar.ProgressBar()
+
+    bar = ProgressBar(widgets=[Bar('>', '[', ']'), ' ',
+                                            Percentage(), ' | ',
+                                            Timer()], maxval=len(image_filenames))
     for dt, filename in bar(iterable):
         image_filename = os.path.join(image_path, filename)
         cv_image = cv2.imread(image_filename)
@@ -170,7 +173,9 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
             velo_end_time.append(dt)
 
     iterable = zip(velo_start_time, velo_end_time, velo_filenames)
-    bar = progressbar.ProgressBar()
+    bar = ProgressBar(widgets=[Bar('>', '[', ']'), ' ',
+                                            Percentage(), ' | ',
+                                            Timer()], maxval=len(velo_filenames))
     for dt0, dtN, filename in bar(iterable):
 
         velo_filename = os.path.join(velo_data_dir, filename)
@@ -312,7 +317,12 @@ def run_kitti2bag():
             sys.exit(1)
         
         bag = rosbag.Bag("kitti_{}_drive_{}_{}.bag".format(args.date, args.drive, args.kitti_type[4:]), 'w', compression=compression)
-        kitti = pykitti.raw(args.dir, args.date, args.drive)
+
+        if args.kitti_type.find("unsynced") != -1:
+            kitti = pykitti.raw(args.dir, args.date, args.drive, dataset="extract")
+        else:
+            kitti = pykitti.raw(args.dir, args.date, args.drive)
+
         if not os.path.exists(kitti.data_path):
             print('Path {} does not exists. Exiting.'.format(kitti.data_path))
             sys.exit(1)
@@ -402,6 +412,3 @@ def run_kitti2bag():
             print("## OVERVIEW ##")
             print(bag)
             bag.close()
-
-if __name__ == '__main__':
-    run_kitti2bag()
