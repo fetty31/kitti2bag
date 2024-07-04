@@ -14,6 +14,7 @@ import os
 import cv2
 import rospy
 import rosbag
+import math
 from progressbar import Bar, Percentage, Timer, ProgressBar
 from tf2_msgs.msg import TFMessage
 from datetime import datetime
@@ -154,11 +155,19 @@ def save_camera_data(bag, kitti_type, kitti, util, bridge, camera, camera_frame_
         bag.write(topic + topic_ext, image_message, t = image_message.header.stamp)
         bag.write(topic + '/camera_info', calib, t = calib.header.stamp) 
         
-def save_velo_data(bag, kitti, velo_frame_id, topic):
+def save_velo_data(bag, kitti, velo_opt, velo_frame_id, topic):
     print("Exporting velodyne data")
     velo_path = os.path.join(kitti.data_path, 'velodyne_points')
     velo_data_dir = os.path.join(velo_path, 'data')
     velo_filenames = sorted(os.listdir(velo_data_dir))
+    with open(os.path.join(velo_path, 'timestamps.txt')) as f:
+        lines = f.readlines()
+        velo_datetimes = []
+        for line in lines:
+            if len(line) == 1:
+                continue
+            dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
+            velo_datetimes.append(dt)
     with open(os.path.join(velo_path, 'timestamps_start.txt')) as f:
         lines = f.readlines()
         velo_start_time = []
@@ -172,11 +181,11 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
             dt = datetime.strptime(line[:-4], '%Y-%m-%d %H:%M:%S.%f')
             velo_end_time.append(dt)
 
-    iterable = zip(velo_start_time, velo_end_time, velo_filenames)
+    iterable = zip(velo_datetimes, velo_start_time, velo_end_time, velo_filenames)
     bar = ProgressBar(widgets=[Bar('>', '[', ']'), ' ',
                                             Percentage(), ' | ',
                                             Timer()], maxval=len(velo_filenames))
-    for dt0, dtN, filename in bar(iterable):
+    for dt, dt0, dtN, filename in bar(iterable):
 
         velo_filename = os.path.join(velo_data_dir, filename)
 
@@ -185,30 +194,73 @@ def save_velo_data(bag, kitti, velo_frame_id, topic):
             scan = (np.fromfile(velo_filename, dtype=np.float32, sep=" ")).reshape(-1,4)
         else:
             scan = (np.fromfile(velo_filename, dtype=np.float32)).reshape(-1,4)
-
-        # set pointcloud stamps relative to dt0 (as done by the velodyne ROS driver)
-        dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
-
-        pc_stamps = (np.arange(0.0, float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")), dt_step)).reshape(-1,1)
-        if pc_stamps.shape[0] > scan.shape[0]:
-            pc_stamps = pc_stamps[:-1]
-
-        scan_stamped = np.append(scan, pc_stamps, axis=1) # scan = [x, y, z, i, t]xN
-
+        
         # create header
         header = Header()
         header.frame_id = velo_frame_id
         header.stamp = rospy.Time.from_sec(float(datetime.strftime(dt0, "%s.%f"))) # sweep reference stamp
 
-        # fill pcl msg (with same fields as the velodyne ROS driver)
+        # pcl msg fields (same as in the velodyne ROS driver)
         fields = [PointField('x', 0, PointField.FLOAT32, 1),
-                  PointField('y', 4, PointField.FLOAT32, 1),
-                  PointField('z', 8, PointField.FLOAT32, 1),
-                  PointField('intensity', 12, PointField.FLOAT32, 1),
-                  PointField('time', 16, PointField.FLOAT32, 1)]
-        pcl_msg = pcl2.create_cloud(header, fields, scan_stamped)
+                PointField('y', 4, PointField.FLOAT32, 1),
+                PointField('z', 8, PointField.FLOAT32, 1),
+                PointField('intensity', 12, PointField.FLOAT32, 1),
+                PointField('time', 16, PointField.FLOAT32, 1)]
 
-        bag.write(topic + '/pointcloud', pcl_msg, t=pcl_msg.header.stamp)
+        # Add timestamp to points in the same order as they appear in the dataset
+        if velo_opt == '1': 
+
+            # time step between packets
+            dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
+
+            pc_stamps = (np.arange(0.0, float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")), dt_step)).reshape(-1,1)
+            if pc_stamps.shape[0] > scan.shape[0]:
+                pc_stamps = pc_stamps[:-1]
+            
+            scan_stamped = np.append(scan, pc_stamps, axis=1) # scan = [x, y, z, i, t]xN
+
+            pcl_scan = scan_stamped
+            bag_stamp = header.stamp # time at which this msg is published (in the rosbag)
+
+        # Add timestamp taking into account LiDAR motion (approximation of lidar ang. vel.)
+        elif velo_opt == '2':
+            
+            # set pointcloud stamps relative to dt0 (as done by the velodyne ROS driver)
+            dt_sweep = float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f"))
+
+            # define each point timestamp taking into account their yaw angle w.r.t. LiDAR frame
+            yaw_scan = []
+            for i in range(scan.shape[0]):
+                yaw = math.atan2(scan[i][1], scan[i][0])
+                if yaw < 0.0:
+                    yaw += 2*math.pi
+                yaw_scan.append(yaw)
+            yaw_scan_array = (np.array(yaw_scan)).reshape(-1,1)
+
+            pc_stamps = yaw_scan_array*dt_sweep/(2*math.pi)
+
+            scan_stamped = np.append(scan, pc_stamps, axis=1) # scan = [x, y, z, i, t]xN
+
+            pcl_scan = scan_stamped
+            bag_stamp = rospy.Time.from_sec(float(datetime.strftime(dtN, "%s.%f"))) # time at which this msg is published (in the rosbag)
+        
+        else: 
+            header.stamp = rospy.Time.from_sec(float(datetime.strftime(dt, "%s.%f"))) # sweep reference stamp
+
+            # pcl msg fields
+            fields = [PointField('x', 0, PointField.FLOAT32, 1),
+                    PointField('y', 4, PointField.FLOAT32, 1),
+                    PointField('z', 8, PointField.FLOAT32, 1),
+                    PointField('i', 12, PointField.FLOAT32, 1)]
+
+            pcl_scan = scan
+            bag_stamp = header.stamp # time at which this msg is published (in the rosbag)
+
+        # Create pcl message
+        pcl_msg = pcl2.create_cloud(header, fields, pcl_scan)
+
+        # Write msg to bag file
+        bag.write(topic + '/pointcloud', pcl_msg, t=bag_stamp)
 
 
 def get_static_transform(from_frame_id, to_frame_id, transform):
@@ -279,8 +331,10 @@ def save_gps_vel_data(bag, kitti, gps_frame_id, topic):
 
 def run_kitti2bag():
     parser = argparse.ArgumentParser(description = "Convert KITTI dataset to ROS bag file the easy way!")
+
     # Accepted argument values
     kitti_types = ["raw_unsynced", "raw_synced", "odom_color", "odom_gray"]
+    velo_options = [ '0', '1', '2']  # 0: no lidar scan stamp for each point \ 1: stamp for each point with respect to dataset order \ 2: approximate stamp based on lidar motion
     odometry_sequences = []
     for s in range(22):
         odometry_sequences.append(str(s).zfill(2))
@@ -289,7 +343,8 @@ def run_kitti2bag():
     parser.add_argument("dir", nargs = "?", default = os.getcwd(), help = "base directory of the dataset, if no directory passed the deafult is current working directory")
     parser.add_argument("-t", "--date", help = "date of the raw dataset (i.e. 2011_09_26), option is only for RAW datasets.")
     parser.add_argument("-r", "--drive", help = "drive number of the raw dataset (i.e. 0001), option is only for RAW datasets.")
-    parser.add_argument("-s", "--sequence", choices = odometry_sequences,help = "sequence of the odometry dataset (between 00 - 21), option is only for ODOMETRY datasets.")
+    parser.add_argument("-v", "--velo", choices = velo_options , help = "whether to fill timestamps for each lidar scan point, option is only for RAW datasets.")
+    parser.add_argument("-s", "--sequence", choices = odometry_sequences, help = "sequence of the odometry dataset (between 00 - 21), option is only for ODOMETRY datasets.")
     args = parser.parse_args()
 
     bridge = CvBridge()
@@ -363,7 +418,7 @@ def run_kitti2bag():
             save_gps_vel_data(bag, kitti, imu_frame_id, gps_vel_topic)
             for camera in cameras:
                 save_camera_data(bag, args.kitti_type, kitti, util, bridge, camera=camera[0], camera_frame_id=camera[1], topic=camera[2], initial_time=None)
-            save_velo_data(bag, kitti, velo_frame_id, velo_topic)
+            save_velo_data(bag, kitti, args.velo, velo_frame_id, velo_topic)
 
         finally:
             print("## OVERVIEW ##")

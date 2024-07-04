@@ -96,6 +96,19 @@ topics:      /kitti/camera_color_left/camera_info    77 msgs    : sensor_msgs/Ca
 
 That's it. You have file `kitti_2011_09_26_drive_0002_sync.bag` that contains your data.
 
+__NEW:__
+Now `kitti2bag` supports unsynced raw datasets, try it out running:
+```
+$ kitti2bag -t 2011_09_26 -r 0002 -v 0 raw_unsynced .
+``` 
+Here the `-v` (`--velo`) argument is set in order to decide what to do with velodyne pointcloud timestamps. By default (`-v 0`) no unique timestamps will be added to each scan point, so the published pcl will include the fields [x, y, z, i]. 
+
+Set `-v 1` in order to add a timestamp for each point (now [x, y, z, intensity, time]) in the same order as they're found in the dataset file. 
+
+Set `-v 2` in order to add a timestamp for each point taking into account the LiDAR rotational motion. This is an approximation/simulation as there's no info in the dataset to be able to perform this action. However, it can be really useful when testing algorithms that perform any deskewing operation (e.g. Lidar-Inertial SLAM).
+
+_NOTE: both args `-v 1/2` will record the velodyne pointcloud in the same way as the official __ROS velodyne driver__, that is with the fields [x, y, z, intensity, time]._
+
 Other source files can be found at [KITTI raw data](http://www.cvlibs.net/datasets/kitti/raw_data.php) page.
 
 If you got an error saying something like _command not found_ it means that your python installation is in bad shape. You might try running 
