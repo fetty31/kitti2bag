@@ -104,7 +104,7 @@ Here the `-v` (`--velo`) argument is set in order to decide what to do with velo
 
 Set `-v 1` in order to add a timestamp for each point (now [x, y, z, intensity, time]) in the same order as they're found in the dataset file. 
 
-Set `-v 2` in order to add a timestamp for each point taking into account the LiDAR rotational motion. This is an approximation/simulation as there's no info in the dataset to be able to perform this action. However, it can be really useful when testing algorithms that perform any deskewing operation (e.g. Lidar-Inertial SLAM).
+Set `-v 2` in order to add a timestamp for each point taking into account the LiDAR rotational motion (linear interpolation based on computed azimuth angle). This is an approximation as there's no info in the dataset to be able to perform this action. However, it can be really useful when testing algorithms that perform any deskewing operation (e.g. Lidar-Inertial SLAM).
 
 _NOTE: both args `-v 1/2` will record the velodyne pointcloud in the same way as the official __ROS velodyne driver__, that is with the fields [x, y, z, intensity, time]._
 

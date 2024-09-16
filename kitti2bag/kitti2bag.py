@@ -467,3 +467,6 @@ def run_kitti2bag():
             print("## OVERVIEW ##")
             print(bag)
             bag.close()
+
+if __name__ == '__main__':
+    run_kitti2bag()
