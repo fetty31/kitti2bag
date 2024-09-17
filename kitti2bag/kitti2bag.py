@@ -207,23 +207,8 @@ def save_velo_data(bag, kitti, velo_opt, velo_frame_id, topic):
                 PointField('intensity', 12, PointField.FLOAT32, 1),
                 PointField('time', 16, PointField.FLOAT32, 1)]
 
-        # Add timestamp to points in the same order as they appear in the dataset
-        if velo_opt == '1': 
-
-            # time step between packets
-            dt_step = ( float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")) ) / scan.shape[0]
-
-            pc_stamps = (np.arange(0.0, float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f")), dt_step)).reshape(-1,1)
-            if pc_stamps.shape[0] > scan.shape[0]:
-                pc_stamps = pc_stamps[:-1]
-            
-            scan_stamped = np.append(scan, pc_stamps, axis=1) # scan = [x, y, z, i, t]xN
-
-            pcl_scan = scan_stamped
-            bag_stamp = header.stamp # time at which this msg is published (in the rosbag)
-
         # Add timestamp taking into account LiDAR motion (approximation of lidar ang. vel.)
-        elif velo_opt == '2':
+        if velo_opt:
             
             # set pointcloud stamps relative to dt0 (as done by the velodyne ROS driver)
             dt_sweep = float(datetime.strftime(dtN, "%s.%f")) - float(datetime.strftime(dt0, "%s.%f"))
@@ -231,10 +216,8 @@ def save_velo_data(bag, kitti, velo_opt, velo_frame_id, topic):
             # define each point timestamp taking into account their yaw angle w.r.t. LiDAR frame
             yaw_scan = []
             for i in range(scan.shape[0]):
-                yaw = math.atan2(scan[i][1], scan[i][0])
-                if yaw < 0.0:
-                    yaw += 2*math.pi
-                yaw_scan.append(yaw)
+                 # Rotation of the LiDAR starts pointing at the bag of the car (-x axis)
+                yaw_scan.append( math.pi - math.atan2(scan[i][1], scan[i][0]) )
             yaw_scan_array = (np.array(yaw_scan)).reshape(-1,1)
 
             pc_stamps = yaw_scan_array*dt_sweep/(2*math.pi)
@@ -334,7 +317,6 @@ def run_kitti2bag():
 
     # Accepted argument values
     kitti_types = ["raw_unsynced", "raw_synced", "odom_color", "odom_gray"]
-    velo_options = [ '0', '1', '2']  # 0: no lidar scan stamp for each point \ 1: stamp for each point with respect to dataset order \ 2: approximate stamp based on lidar motion
     odometry_sequences = []
     for s in range(22):
         odometry_sequences.append(str(s).zfill(2))
@@ -343,7 +325,7 @@ def run_kitti2bag():
     parser.add_argument("dir", nargs = "?", default = os.getcwd(), help = "base directory of the dataset, if no directory passed the deafult is current working directory")
     parser.add_argument("-t", "--date", help = "date of the raw dataset (i.e. 2011_09_26), option is only for RAW datasets.")
     parser.add_argument("-r", "--drive", help = "drive number of the raw dataset (i.e. 0001), option is only for RAW datasets.")
-    parser.add_argument("-v", "--velo", choices = velo_options , help = "whether to fill timestamps for each lidar scan point, option is only for RAW datasets.")
+    parser.add_argument("-v", "--velo" , action='store_true', help = "whether to fill timestamps for each lidar scan point, option is only for RAW datasets.")
     parser.add_argument("-s", "--sequence", choices = odometry_sequences, help = "sequence of the odometry dataset (between 00 - 21), option is only for ODOMETRY datasets.")
     args = parser.parse_args()
 

@@ -98,15 +98,11 @@ That's it. You have file `kitti_2011_09_26_drive_0002_sync.bag` that contains yo
 __NEW!__
 Now `kitti2bag` supports unsynced raw datasets, try it out running:
 ```
-$ kitti2bag -t 2011_09_26 -r 0002 -v 0 raw_unsynced .
+$ kitti2bag -t 2011_09_26 -r 0002 -v raw_unsynced .
 ``` 
-Here the `-v` (`--velo`) argument is set in order to decide what to do with velodyne pointcloud timestamps. By default (`-v 0`) no unique timestamps will be added to each scan point, so the published pcl will include the fields [x, y, z, i]. 
+Here the `-v` (`--velo`) argument is optional. If `-v` is not present no unique timestamps will be added to each scan point, so the published pcl will include the fields [x,y,z,i]. On the contrary, if `-v` is present a timestamp for each point will be added taking into account the LiDAR rotational motion (linear interpolation based on the computed azimuth angle). This is actually an approximation as there's no info in the dataset to be able substract the real points timestamps. However, it can be really useful when testing algorithms that perform any deskewing operation (e.g. LiDAR-Inertial SLAM approaches).
 
-Set `-v 1` in order to add a timestamp for each point (now [x, y, z, intensity, time]) in the same order as they're found in the dataset file. 
-
-Set `-v 2` in order to add a timestamp for each point taking into account the LiDAR rotational motion (linear interpolation based on computed azimuth angle). This is an approximation as there's no info in the dataset to be able to perform this action. However, it can be really useful when testing algorithms that perform any deskewing operation (e.g. Lidar-Inertial SLAM).
-
-_NOTE: both args `-v 1/2` will record the velodyne pointcloud in the same way as the official __ROS velodyne driver__, that is with the fields [x, y, z, intensity, time]._
+_NOTE: arg `-v` will record the velodyne pointcloud in the same way as the official __ROS velodyne driver__, that is with the fields [x, y, z, intensity, time]._
 
 Other source files can be found at [KITTI raw data](http://www.cvlibs.net/datasets/kitti/raw_data.php) page.
 
